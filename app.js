@@ -392,7 +392,7 @@ async function loadAdminData() {
             </div>
             <div>${escapeHtml(o.customer_name)} — ${o.total_rbx} RBX / $${formatCash(o.total_cash)}</div>
             <div class="muted">Payment: ${escapeHtml(o.payment_method || 'cashapp')}${o.payment_method === 'trade' ? ' — ' + escapeHtml(o.trade_description || '') : ''}</div>
-            ${o.payment_method === 'trade' && o.trade_image_filename ? `<div><img src="/uploads/${o.trade_image_filename}" alt="Trade item" style="max-width:120px;border-radius:8px;margin-top:0.5rem;"></div>` : ''}
+            ${o.payment_method === 'trade' && o.trade_image_filename ? `<div><img src="/uploads/${o.trade_image_filename}" alt="Trade item" style="max-width:120px;border-radius:8px;margin-top:0.5rem;"></div>` : ''}\
             <div class="admin-order-actions">
               <select class="status-select" data-id="${o.id}">
                 <option value="waiting" ${o.status === 'waiting' ? 'selected' : ''}>Waiting</option>
