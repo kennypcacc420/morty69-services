@@ -1,0 +1,61 @@
+MORTY69 SERVICES — DEPLOY STEPS (copy/paste only)
+=================================================
+
+Everything is inside the "Mortys site" folder. Upload THIS folder to GitHub.
+
+STEP 1 — Push to GitHub
+-----------------------
+Open PowerShell inside the "Mortys site" folder and run:
+
+  cd "C:\Users\Kenny\Mortys site"
+  git add .
+  git commit -m "Morty69 Services store"
+  git branch -M main
+  git remote add origin https://github.com/YOUR_USERNAME/morty69-services.git
+  git push -u origin main
+
+(Replace YOUR_USERNAME with your GitHub username. Create the empty repo on GitHub first.)
+
+
+STEP 2 — Deploy on Render (free)
+--------------------------------
+1. Go to https://dashboard.render.com
+2. Click New → Blueprint
+3. Connect your GitHub repo
+4. Render auto-reads render.yaml — click Apply
+5. When it asks for env vars, set:
+     ADMIN_KEY       = Morty666
+     DISCORD_WEBHOOK = https://discord.com/api/webhooks/1538332569102319616/-Ltcb2L4u0oEiHPz4e10_WqgkBf0NJFdhrkjXsLdxPperMCH-4WSPgSjkPFsReAkp313
+6. Wait for deploy to finish — your site URL will show on the dashboard
+
+
+STEP 3 — Use the store
+----------------------
+- Store tab       = products for customers
+- Cart tab        = checkout + waiting queue
+- Check Order tab = customers enter their M69-XXXXXXXX code
+- Admin tab       = enter key Morty666 to add products & manage orders
+
+
+ALL FILES IN THIS FOLDER ("Mortys site")
+-----------------------------------------
+Mortys site/
+  package.json
+  server.js
+  db.js
+  render.yaml
+  .gitignore
+  README.md
+  DEPLOY.txt          ← you are here
+  data/
+    .gitkeep
+    uploads/
+      .gitkeep
+  public/
+    index.html
+    css/
+      style.css
+    js/
+      app.js
+
+Nothing else needed. Render installs npm packages automatically.

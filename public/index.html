@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Morty69 Services</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container header-inner">
+      <div class="brand">
+        <span class="brand-icon">M69</span>
+        <h1>Morty69 Services</h1>
+      </div>
+      <nav class="nav">
+        <button class="nav-btn active" data-tab="store">Store</button>
+        <button class="nav-btn" data-tab="cart">
+          Cart
+          <span class="badge" id="cart-badge">0</span>
+        </button>
+        <button class="nav-btn" data-tab="check-order">Check Order</button>
+        <button class="nav-btn" data-tab="admin">Admin</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Store Tab -->
+    <section id="tab-store" class="tab active">
+      <div class="section-header">
+        <h2>Products</h2>
+        <p class="muted">Browse and add items to your cart</p>
+      </div>
+      <div id="products-grid" class="products-grid"></div>
+      <div id="products-empty" class="empty-state hidden">
+        <p>No products yet. Check back soon!</p>
+      </div>
+    </section>
+
+    <!-- Cart Tab -->
+    <section id="tab-cart" class="tab">
+      <div class="section-header">
+        <h2>Your Cart</h2>
+        <p class="muted">Review items and place your order</p>
+      </div>
+
+      <div class="queue-banner">
+        <div class="queue-stat">
+          <span class="queue-number" id="waiting-count">0</span>
+          <span class="queue-label">people waiting in queue</span>
+        </div>
+      </div>
+
+      <div id="cart-items" class="cart-items"></div>
+      <div id="cart-empty" class="empty-state">
+        <p>Your cart is empty. Head to the Store tab to add products.</p>
+      </div>
+
+      <div id="checkout-panel" class="checkout-panel hidden">
+        <div class="totals">
+          <div><strong>Total RBX:</strong> <span id="total-rbx">0</span></div>
+          <div><strong>Total Cash:</strong> $<span id="total-cash">0.00</span></div>
+        </div>
+        <label class="field">
+          <span>Your Name / Roblox Username</span>
+          <input type="text" id="customer-name" placeholder="Enter your name">
+        </label>
+        <button class="btn btn-primary" id="place-order-btn">Place Order</button>
+      </div>
+
+      <div id="order-success" class="order-success hidden">
+        <h3>Order Placed!</h3>
+        <p>Save this code to check your order status:</p>
+        <div class="order-code" id="success-order-code"></div>
+        <p class="muted">Queue position: <span id="success-queue-pos"></span></p>
+      </div>
+
+      <div class="waiting-list-section">
+        <h3>Current Waiting List</h3>
+        <div id="waiting-list" class="waiting-list"></div>
+      </div>
+    </section>
+
+    <!-- Check Order Tab -->
+    <section id="tab-check-order" class="tab">
+      <div class="section-header">
+        <h2>Check Order</h2>
+        <p class="muted">Enter your order code to see status</p>
+      </div>
+      <div class="check-order-form card">
+        <label class="field">
+          <span>Order Code</span>
+          <input type="text" id="check-order-code" placeholder="M69-XXXXXXXX">
+        </label>
+        <button class="btn btn-primary" id="check-order-btn">Check Status</button>
+      </div>
+      <div id="order-result" class="order-result hidden"></div>
+    </section>
+
+    <!-- Admin Tab -->
+    <section id="tab-admin" class="tab">
+      <div id="admin-login" class="card admin-login">
+        <h2>Admin Access</h2>
+        <p class="muted">Enter admin key to continue</p>
+        <label class="field">
+          <span>Admin Key</span>
+          <input type="password" id="admin-key-input" placeholder="Enter key">
+        </label>
+        <button class="btn btn-primary" id="admin-login-btn">Enter Admin</button>
+        <p id="admin-login-error" class="error hidden">Invalid admin key</p>
+      </div>
+
+      <div id="admin-panel" class="hidden">
+        <div class="section-header">
+          <h2>Admin Panel</h2>
+          <button class="btn btn-secondary" id="admin-logout-btn">Logout</button>
+        </div>
+
+        <div class="admin-grid">
+          <div class="card">
+            <h3>Add Product</h3>
+            <form id="add-product-form">
+              <label class="field">
+                <span>Product Name</span>
+                <input type="text" name="name" required>
+              </label>
+              <label class="field">
+                <span>Description</span>
+                <textarea name="description" rows="2"></textarea>
+              </label>
+              <label class="field">
+                <span>Product Image (JPG only)</span>
+                <input type="file" name="image" accept=".jpg,.jpeg" required>
+              </label>
+              <div class="field-row">
+                <label class="field">
+                  <span>RBX Price</span>
+                  <input type="number" name="rbx_price" min="0" step="1" required>
+                </label>
+                <label class="field">
+                  <span>Cash Price ($)</span>
+                  <input type="number" name="cash_price" min="0" step="0.01" required>
+                </label>
+              </div>
+              <button type="submit" class="btn btn-primary">Add Product</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <h3>Manage Orders</h3>
+            <div id="admin-orders" class="admin-orders"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 1.5rem;">
+          <h3>Current Products</h3>
+          <div id="admin-products" class="admin-products"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2026 Morty69 Services</p>
+    </div>
+  </footer>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

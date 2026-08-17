@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: morty69-services
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.0
+      - key: ADMIN_KEY
+        sync: false
+      - key: DISCORD_WEBHOOK
+        sync: false
+    disk:
+      name: morty69-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
