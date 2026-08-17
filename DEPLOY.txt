@@ -1,61 +1,47 @@
-MORTY69 SERVICES — DEPLOY STEPS (copy/paste only)
-=================================================
+MORTY69 SERVICES — PYTHON VERSION (Render)
+============================================
 
-Everything is inside the "Mortys site" folder. Upload THIS folder to GitHub.
-
-STEP 1 — Push to GitHub
------------------------
-Open PowerShell inside the "Mortys site" folder and run:
+STEP 1 — Push updated files to GitHub
+--------------------------------------
+Open PowerShell in the "Mortys site" folder:
 
   cd "C:\Users\Kenny\Mortys site"
   git add .
-  git commit -m "Morty69 Services store"
-  git branch -M main
-  git remote add origin https://github.com/YOUR_USERNAME/morty69-services.git
-  git push -u origin main
+  git commit -m "Switch to Python for Render"
+  git push
 
-(Replace YOUR_USERNAME with your GitHub username. Create the empty repo on GitHub first.)
+STEP 2 — Render settings (Python 3)
+-------------------------------------
+Go to Render Dashboard → your service → Settings
 
+  Runtime:        Python 3
+  Build Command:  pip install -r requirements.txt
+  Start Command:  gunicorn app:app --bind 0.0.0.0:$PORT
 
-STEP 2 — Deploy on Render (free)
---------------------------------
-1. Go to https://dashboard.render.com
-2. Click New → Blueprint
-3. Connect your GitHub repo
-4. Render auto-reads render.yaml — click Apply
-5. When it asks for env vars, set:
-     ADMIN_KEY       = Morty666
-     DISCORD_WEBHOOK = https://discord.com/api/webhooks/1538332569102319616/-Ltcb2L4u0oEiHPz4e10_WqgkBf0NJFdhrkjXsLdxPperMCH-4WSPgSjkPFsReAkp313
-6. Wait for deploy to finish — your site URL will show on the dashboard
+Environment variables:
+  ADMIN_KEY       = Morty666
+  DISCORD_WEBHOOK = https://discord.com/api/webhooks/1538332569102319616/-Ltcb2L4u0oEiHPz4e10_WqgkBf0NJFdhrkjXsLdxPperMCH-4WSPgSjkPFsReAkp313
 
+Disk (important — keeps orders & product images):
+  Mount path: /opt/render/project/src/data
+  Size: 1 GB
 
-STEP 3 — Use the store
-----------------------
-- Store tab       = products for customers
-- Cart tab        = checkout + waiting queue
-- Check Order tab = customers enter their M69-XXXXXXXX code
-- Admin tab       = enter key Morty666 to add products & manage orders
+Then: Manual Deploy → Deploy latest commit
 
-
-ALL FILES IN THIS FOLDER ("Mortys site")
------------------------------------------
+FILES YOU NEED ON GITHUB
+------------------------
 Mortys site/
-  package.json
-  server.js
-  db.js
+  app.py              ← main Python server
+  requirements.txt    ← Python packages
   render.yaml
   .gitignore
   README.md
-  DEPLOY.txt          ← you are here
+  DEPLOY.txt
   data/
-    .gitkeep
     uploads/
-      .gitkeep
   public/
     index.html
-    css/
-      style.css
-    js/
-      app.js
+    css/style.css
+    js/app.js
 
-Nothing else needed. Render installs npm packages automatically.
+Admin key: Morty666

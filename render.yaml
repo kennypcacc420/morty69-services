@@ -1,13 +1,13 @@
 services:
   - type: web
     name: morty69-services
-    runtime: node
+    runtime: python
     plan: free
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     envVars:
-      - key: NODE_VERSION
-        value: 20.11.0
+      - key: PYTHON_VERSION
+        value: 3.11.11
       - key: ADMIN_KEY
         sync: false
       - key: DISCORD_WEBHOOK

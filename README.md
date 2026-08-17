@@ -1,62 +1,24 @@
-# Morty69 Services
+# Morty69 Services (Python)
 
-Online store with cart, order tracking, admin panel, and Discord notifications. Built for deployment on [Render](https://render.com).
+Online store with cart, order tracking, admin panel, and Discord notifications. Built for **Python 3** on [Render](https://render.com).
 
-## Features
-
-- **Store** — Browse products with RBX and cash prices
-- **Cart** — Add items, place orders, see waiting queue count
-- **Check Order** — Look up order status with a unique code (e.g. `M69-AB12CD34`)
-- **Admin** — Add/delete products (JPG upload), manage order status and estimated time
-- **Discord** — New orders are sent to your webhook automatically
-
-## Local Development
-
-```bash
-npm install
-npm start
-```
-
-Open http://localhost:3000
-
-## Deploy to Render
+## Deploy on Render
 
 1. Push this repo to GitHub
-2. Go to [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
-3. Connect your GitHub repo — Render reads `render.yaml` automatically
-4. Set environment variables:
-   - `ADMIN_KEY` = `Morty666` (or your own key)
-   - `DISCORD_WEBHOOK` = your Discord webhook URL
-5. Deploy
+2. Render Dashboard → your service → **Settings**
+3. **Runtime:** Python 3
+4. **Build Command:** `pip install -r requirements.txt`
+5. **Start Command:** `gunicorn app:app --bind 0.0.0.0:$PORT`
+6. **Env vars:** `ADMIN_KEY=Morty666`, `DISCORD_WEBHOOK=your_webhook_url`
+7. **Disk:** mount `/opt/render/project/src/data` (1 GB)
+8. Manual Deploy
 
-The included persistent disk keeps your SQLite database across redeploys.
+## Admin
 
-### Manual Deploy (without Blueprint)
+Admin tab → key: `Morty666`
 
-1. **New Web Service** → connect GitHub repo
-2. **Runtime:** Node
-3. **Build Command:** `npm install`
-4. **Start Command:** `npm start`
-5. Add a **Persistent Disk** mounted at `/opt/render/project/src/data` (1 GB)
-6. Add env vars: `ADMIN_KEY`, `DISCORD_WEBHOOK`
+## Tech
 
-Product images and the database both live under `data/`, which is backed by the Render persistent disk.
-
-## Admin Access
-
-Go to the **Admin** tab and enter key: `Morty666` (or whatever you set in `ADMIN_KEY`).
-
-## Order Statuses
-
-| Status    | Meaning                          |
-|-----------|----------------------------------|
-| waiting   | In queue, not started yet        |
-| pending   | Being worked on                  |
-| completed | Order finished                   |
-
-## Tech Stack
-
-- Node.js + Express
-- SQLite (better-sqlite3)
-- Multer (JPG file uploads)
-- Vanilla HTML/CSS/JS frontend
+- Python 3 + Flask
+- SQLite (built-in, no npm issues)
+- Gunicorn for production
