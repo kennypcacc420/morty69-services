@@ -135,4 +135,319 @@ def _build_order_items(items):
     order_items = []
 
     try:
-        products_response =
+        products_response = supabase.table("products").select("*").execute()
+        products = {p["id"]: p for p in products_response.data}
+    except Exception as e:
+        return {"error": f"Database error: {str(e)}"}
+
+    for item in items:
+        product_id = item.get("product_id")
+        if product_id not in products:
+            return {"error": f"Product {product_id} not found"}
+
+        product = products[product_id]
+        qty = max(1, int(item.get("quantity") or 1))
+        total_rbx += product["rbx_price"] * qty
+        total_cash += product["cash_price"] * qty
+        order_items.append(
+            {
+                "product_id": product["id"],
+                "name": product["name"],
+                "quantity": qty,
+                "rbx_price": product["rbx_price"] * qty,
+                "cash_price": product["cash_price"] * qty,
+            }
+        )
+
+    return order_items, total_rbx, total_cash
+
+
+@app.route("/api/orders", methods=["POST"])
+def create_order():
+    data = request.get_json(silent=True) or {}
+    customer_name = (data.get("customer_name") or "").strip()
+    items = data.get("items") or []
+    payment_method = (data.get("payment_method") or "cashapp").strip().lower()
+
+    if not customer_name or not items:
+        return jsonify({"error": "Customer name and items are required"}), 400
+
+    if payment_method not in PAYMENT_METHODS:
+        return jsonify({"error": "Invalid payment method"}), 400
+
+    if payment_method == "trade":
+        return (
+            jsonify({"error": "Use the Trade tab to submit a trade offer with an image"}),
+            400,
+        )
+
+    built = _build_order_items(items)
+    if isinstance(built, dict):
+        return jsonify(built), 400
+    order_items, total_rbx, total_cash = built
+
+    for _ in range(10):
+        order_code = generate_order_code()
+        try:
+            order_data = {
+                "order_code": order_code,
+                "customer_name": customer_name,
+                "items_json": json.dumps(order_items),
+                "total_rbx": total_rbx,
+                "total_cash": total_cash,
+                "status": "waiting",
+                "payment_method": payment_method,
+            }
+            response = supabase.table("orders").insert(order_data).execute()
+            order = response.data[0]
+
+            # Get waiting count
+            waiting_response = supabase.table("orders").select("id").in_(
+                "status", ["waiting", "pending"]
+            ).execute()
+            waiting_count = len(waiting_response.data)
+
+            send_discord_notification(order, waiting_count)
+            return jsonify(
+                {
+                    "order_code": order["order_code"],
+                    "status": order["status"],
+                    "queue_position": waiting_count,
+                    "waiting_count": waiting_count,
+                }
+            )
+        except Exception as e:
+            if "duplicate" in str(e).lower():
+                continue
+            return jsonify({"error": str(e)}), 500
+
+    return jsonify({"error": "Could not create order"}), 500
+
+
+@app.route("/api/orders/trade", methods=["POST"])
+def create_trade_order():
+    customer_name = (request.form.get("customer_name") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    items_raw = request.form.get("items") or "[]"
+    image = request.files.get("image")
+
+    try:
+        items = json.loads(items_raw)
+    except (TypeError, ValueError):
+        items = []
+
+    if not customer_name:
+        return jsonify({"error": "Name is required"}), 400
+
+    if not items:
+        return jsonify({"error": "You need at least 1 item in your cart to trade"}), 400
+
+    if not image or not image.filename:
+        return jsonify({"error": "A JPG image of what you're trading is required"}), 400
+
+    if not allowed_file(image.filename):
+        return jsonify({"error": "Only JPG image files are allowed"}), 400
+
+    if not description:
+        return jsonify({"error": "A description of what you're offering is required"}), 400
+
+    built = _build_order_items(items)
+    if isinstance(built, dict):
+        return jsonify(built), 400
+    order_items, total_rbx, total_cash = built
+
+    ext = Path(image.filename).suffix.lower()
+    trade_filename = f"trade-{int(datetime.now().timestamp())}-{uuid.uuid4().hex}{ext}"
+    image.save(UPLOADS_DIR / trade_filename)
+
+    for _ in range(10):
+        order_code = generate_order_code()
+        try:
+            order_data = {
+                "order_code": order_code,
+                "customer_name": customer_name,
+                "items_json": json.dumps(order_items),
+                "total_rbx": total_rbx,
+                "total_cash": total_cash,
+                "status": "waiting",
+                "payment_method": "trade",
+                "trade_image_filename": trade_filename,
+                "trade_description": description,
+            }
+            response = supabase.table("orders").insert(order_data).execute()
+            order = response.data[0]
+
+            # Get waiting count
+            waiting_response = supabase.table("orders").select("id").in_(
+                "status", ["waiting", "pending"]
+            ).execute()
+            waiting_count = len(waiting_response.data)
+
+            send_discord_notification(order, waiting_count)
+            return jsonify(
+                {
+                    "order_code": order["order_code"],
+                    "status": order["status"],
+                    "queue_position": waiting_count,
+                    "waiting_count": waiting_count,
+                }
+            )
+        except Exception as e:
+            if "duplicate" in str(e).lower():
+                continue
+            return jsonify({"error": str(e)}), 500
+
+    return jsonify({"error": "Could not create trade order"}), 500
+
+
+@app.route("/api/orders/<code>", methods=["GET"])
+def get_order(code):
+    try:
+        response = supabase.table("orders").select("*").eq(
+            "order_code", code.upper()
+        ).execute()
+
+        if not response.data:
+            return jsonify({"error": "Order not found"}), 404
+
+        order = response.data[0]
+
+        # Get orders ahead in queue
+        ahead_response = supabase.table("orders").select("id").in_(
+            "status", ["waiting", "pending"]
+        ).lt("created_at", order["created_at"]).execute()
+        ahead_count = len(ahead_response.data)
+
+        # Get total waiting count
+        waiting_response = supabase.table("orders").select("id").in_(
+            "status", ["waiting", "pending"]
+        ).execute()
+        waiting_count = len(waiting_response.data)
+
+        order["items"] = json.loads(order["items_json"])
+        order["queue_position"] = 0 if order["status"] == "completed" else ahead_count + 1
+        order["waiting_count"] = waiting_count
+        return jsonify(order)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/verify", methods=["POST"])
+def verify_admin():
+    data = request.get_json(silent=True) or {}
+    if data.get("key") == ADMIN_KEY:
+        return jsonify({"success": True})
+    return jsonify({"error": "Invalid admin key"}), 401
+
+
+@app.route("/api/admin/orders", methods=["GET"])
+@require_admin
+def admin_orders():
+    try:
+        response = supabase.table("orders").select("*").order("created_at", desc=True).execute()
+        for order in response.data:
+            order["items"] = json.loads(order["items_json"])
+        return jsonify(response.data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/orders/<int:order_id>", methods=["PATCH"])
+@require_admin
+def update_order(order_id):
+    data = request.get_json(silent=True) or {}
+    status = data.get("status")
+    est_time = data.get("est_time")
+
+    valid_statuses = {"waiting", "pending", "completed"}
+    if status and status not in valid_statuses:
+        return jsonify({"error": "Invalid status"}), 400
+
+    try:
+        # Get current order to preserve existing fields
+        order_response = supabase.table("orders").select("*").eq("id", order_id).execute()
+        if not order_response.data:
+            return jsonify({"error": "Order not found"}), 404
+
+        current_order = order_response.data[0]
+        update_data = {
+            "status": status or current_order["status"],
+            "est_time": est_time if est_time is not None else current_order["est_time"],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        response = supabase.table("orders").update(update_data).eq("id", order_id).execute()
+        updated = response.data[0]
+        updated["items"] = json.loads(updated["items_json"])
+        return jsonify(updated)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/products", methods=["POST"])
+@require_admin
+def create_product():
+    name = (request.form.get("name") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    rbx_price = float(request.form.get("rbx_price") or 0)
+    cash_price = float(request.form.get("cash_price") or 0)
+    image = request.files.get("image")
+
+    if not name or not image or not image.filename:
+        return jsonify({"error": "Name and JPG image are required"}), 400
+
+    if not allowed_file(image.filename):
+        return jsonify({"error": "Only JPG image files are allowed"}), 400
+
+    ext = Path(image.filename).suffix.lower()
+    filename = f"{int(datetime.now().timestamp())}-{uuid.uuid4().hex}{ext}"
+    image.save(UPLOADS_DIR / filename)
+
+    try:
+        product_data = {
+            "name": name,
+            "description": description,
+            "image_filename": filename,
+            "rbx_price": rbx_price,
+            "cash_price": cash_price,
+        }
+        response = supabase.table("products").insert(product_data).execute()
+        return jsonify(response.data[0])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/products/<int:product_id>", methods=["DELETE"])
+@require_admin
+def delete_product(product_id):
+    try:
+        # Get product to find image
+        response = supabase.table("products").select("*").eq("id", product_id).execute()
+        if not response.data:
+            return jsonify({"error": "Product not found"}), 404
+
+        product = response.data[0]
+        image_path = UPLOADS_DIR / product["image_filename"]
+        if image_path.exists():
+            image_path.unlink()
+
+        supabase.table("products").delete().eq("id", product_id).execute()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/")
+def index():
+    return send_from_directory(PUBLIC_DIR, "index.html")
+
+
+@app.errorhandler(Exception)
+def handle_error(exc):
+    print(exc)
+    return jsonify({"error": str(exc)}), 400
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 3000))
+    app.run(host="0.0.0.0", port=port)
