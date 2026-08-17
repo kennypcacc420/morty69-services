@@ -121,7 +121,7 @@ def queue_info():
         response = supabase.table("orders").select(
             "id, order_code, customer_name, status, est_time, created_at"
         ).in_("status", ["waiting", "pending"]).order("created_at", desc=False).execute()
-        
+
         waiting_count = len(response.data)
         return jsonify({"waitingCount": waiting_count, "orders": response.data})
     except Exception as e:
