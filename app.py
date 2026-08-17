@@ -27,6 +27,7 @@ DISCORD_WEBHOOK = os.environ.get(
     "https://discord.com/api/webhooks/1538332569102319616/-Ltcb2L4u0oEiHPz4e10_WqgkBf0NJFdhrkjXsLdxPperMCH-4WSPgSjkPFsReAkp313",
 )
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg"}
+PAYMENT_METHODS = {"cashapp", "paypal", "chime", "robux", "trade"}
 
 app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="")
 
@@ -60,11 +61,26 @@ def init_db():
             total_cash REAL NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'waiting',
             est_time TEXT DEFAULT '',
+            payment_method TEXT NOT NULL DEFAULT 'cashapp',
+            trade_image_filename TEXT DEFAULT '',
+            trade_description TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
         );
         """
     )
+    conn.commit()
+
+    # Lightweight migration for databases created before payment/trade columns existed.
+    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(orders)").fetchall()}
+    migrations = {
+        "payment_method": "ALTER TABLE orders ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cashapp'",
+        "trade_image_filename": "ALTER TABLE orders ADD COLUMN trade_image_filename TEXT DEFAULT ''",
+        "trade_description": "ALTER TABLE orders ADD COLUMN trade_description TEXT DEFAULT ''",
+    }
+    for col, statement in migrations.items():
+        if col not in existing_cols:
+            conn.execute(statement)
     conn.commit()
     conn.close()
 
@@ -97,23 +113,38 @@ def send_discord_notification(order, waiting_count):
         for item in items
     )
 
+    fields = [
+        {"name": "Order Code", "value": f"`{order['order_code']}`", "inline": True},
+        {"name": "Customer", "value": order["customer_name"], "inline": True},
+        {"name": "Status", "value": order["status"], "inline": True},
+        {"name": "Payment Method", "value": order["payment_method"], "inline": True},
+        {"name": "Items", "value": item_lines or "None", "inline": False},
+        {
+            "name": "Totals",
+            "value": f"{order['total_rbx']} RBX / ${order['total_cash']:.2f}",
+            "inline": False,
+        },
+        {"name": "Queue Position", "value": str(waiting_count), "inline": True},
+    ]
+
+    if order["payment_method"] == "trade":
+        fields.append(
+            {
+                "name": "Trade Offer",
+                "value": order["trade_description"] or "No description provided",
+                "inline": False,
+            }
+        )
+
     embed = {
         "title": "🛒 New Order — Morty69 Services",
         "color": 0x7C3AED,
-        "fields": [
-            {"name": "Order Code", "value": f"`{order['order_code']}`", "inline": True},
-            {"name": "Customer", "value": order["customer_name"], "inline": True},
-            {"name": "Status", "value": order["status"], "inline": True},
-            {"name": "Items", "value": item_lines or "None", "inline": False},
-            {
-                "name": "Totals",
-                "value": f"{order['total_rbx']} RBX / ${order['total_cash']:.2f}",
-                "inline": False,
-            },
-            {"name": "Queue Position", "value": str(waiting_count), "inline": True},
-        ],
+        "fields": fields,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+    if order["payment_method"] == "trade" and order["trade_image_filename"]:
+        embed["image"] = {"url": f"/uploads/{order['trade_image_filename']}"}
 
     try:
         requests.post(DISCORD_WEBHOOK, json={"embeds": [embed]}, timeout=10)
@@ -160,16 +191,8 @@ def queue_info():
     return jsonify({"waitingCount": waiting_count, "orders": [row_to_dict(o) for o in orders]})
 
 
-@app.route("/api/orders", methods=["POST"])
-def create_order():
-    data = request.get_json(silent=True) or {}
-    customer_name = (data.get("customer_name") or "").strip()
-    items = data.get("items") or []
-
-    if not customer_name or not items:
-        return jsonify({"error": "Customer name and items are required"}), 400
-
-    conn = get_db()
+def _build_order_items(conn, items):
+    """Validate cart items against products and return (order_items, total_rbx, total_cash) or an error dict."""
     total_rbx = 0.0
     total_cash = 0.0
     order_items = []
@@ -179,8 +202,7 @@ def create_order():
             "SELECT * FROM products WHERE id = ?", (item.get("product_id"),)
         ).fetchone()
         if not product:
-            conn.close()
-            return jsonify({"error": f"Product {item.get('product_id')} not found"}), 400
+            return {"error": f"Product {item.get('product_id')} not found"}
 
         qty = max(1, int(item.get("quantity") or 1))
         total_rbx += product["rbx_price"] * qty
@@ -195,15 +217,44 @@ def create_order():
             }
         )
 
+    return order_items, total_rbx, total_cash
+
+
+@app.route("/api/orders", methods=["POST"])
+def create_order():
+    data = request.get_json(silent=True) or {}
+    customer_name = (data.get("customer_name") or "").strip()
+    items = data.get("items") or []
+    payment_method = (data.get("payment_method") or "cashapp").strip().lower()
+
+    if not customer_name or not items:
+        return jsonify({"error": "Customer name and items are required"}), 400
+
+    if payment_method not in PAYMENT_METHODS:
+        return jsonify({"error": "Invalid payment method"}), 400
+
+    if payment_method == "trade":
+        return (
+            jsonify({"error": "Use the Trade tab to submit a trade offer with an image"}),
+            400,
+        )
+
+    conn = get_db()
+    built = _build_order_items(conn, items)
+    if isinstance(built, dict):
+        conn.close()
+        return jsonify(built), 400
+    order_items, total_rbx, total_cash = built
+
     for _ in range(10):
         order_code = generate_order_code()
         try:
             cursor = conn.execute(
                 """
-                INSERT INTO orders (order_code, customer_name, items_json, total_rbx, total_cash, status)
-                VALUES (?, ?, ?, ?, ?, 'waiting')
+                INSERT INTO orders (order_code, customer_name, items_json, total_rbx, total_cash, status, payment_method)
+                VALUES (?, ?, ?, ?, ?, 'waiting', ?)
                 """,
-                (order_code, customer_name, json.dumps(order_items), total_rbx, total_cash),
+                (order_code, customer_name, json.dumps(order_items), total_rbx, total_cash, payment_method),
             )
             conn.commit()
             order = conn.execute(
@@ -226,6 +277,88 @@ def create_order():
 
     conn.close()
     return jsonify({"error": "Could not create order"}), 500
+
+
+@app.route("/api/orders/trade", methods=["POST"])
+def create_trade_order():
+    customer_name = (request.form.get("customer_name") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    items_raw = request.form.get("items") or "[]"
+    image = request.files.get("image")
+
+    try:
+        items = json.loads(items_raw)
+    except (TypeError, ValueError):
+        items = []
+
+    if not customer_name:
+        return jsonify({"error": "Name is required"}), 400
+
+    if not items:
+        return jsonify({"error": "You need at least 1 item in your cart to trade"}), 400
+
+    if not image or not image.filename:
+        return jsonify({"error": "A JPG image of what you're trading is required"}), 400
+
+    if not allowed_file(image.filename):
+        return jsonify({"error": "Only JPG image files are allowed"}), 400
+
+    if not description:
+        return jsonify({"error": "A description of what you're offering is required"}), 400
+
+    conn = get_db()
+    built = _build_order_items(conn, items)
+    if isinstance(built, dict):
+        conn.close()
+        return jsonify(built), 400
+    order_items, total_rbx, total_cash = built
+
+    ext = Path(image.filename).suffix.lower()
+    trade_filename = f"trade-{int(datetime.now().timestamp())}-{uuid.uuid4().hex}{ext}"
+    image.save(UPLOADS_DIR / trade_filename)
+
+    for _ in range(10):
+        order_code = generate_order_code()
+        try:
+            cursor = conn.execute(
+                """
+                INSERT INTO orders (
+                    order_code, customer_name, items_json, total_rbx, total_cash, status,
+                    payment_method, trade_image_filename, trade_description
+                )
+                VALUES (?, ?, ?, ?, ?, 'waiting', 'trade', ?, ?)
+                """,
+                (
+                    order_code,
+                    customer_name,
+                    json.dumps(order_items),
+                    total_rbx,
+                    total_cash,
+                    trade_filename,
+                    description,
+                ),
+            )
+            conn.commit()
+            order = conn.execute(
+                "SELECT * FROM orders WHERE id = ?", (cursor.lastrowid,)
+            ).fetchone()
+            order_dict = row_to_dict(order)
+            waiting_count = get_waiting_count(conn)
+            conn.close()
+            send_discord_notification(order_dict, waiting_count)
+            return jsonify(
+                {
+                    "order_code": order_dict["order_code"],
+                    "status": order_dict["status"],
+                    "queue_position": waiting_count,
+                    "waiting_count": waiting_count,
+                }
+            )
+        except sqlite3.IntegrityError:
+            continue
+
+    conn.close()
+    return jsonify({"error": "Could not create trade order"}), 500
 
 
 @app.route("/api/orders/<code>", methods=["GET"])
