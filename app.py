@@ -26,8 +26,8 @@ DISCORD_WEBHOOK = os.environ.get(
     "DISCORD_WEBHOOK",
     "https://discord.com/api/webhooks/1538332569102319616/-Ltcb2L4u0oEiHPz4e10_WqgkBf0NJFdhrkjXsLdxPperMCH-4WSPgSjkPFsReAkp313",
 )
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://oioartwguzoxvdrlqeu.supabase.co")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pb2FycnR3Z3V6b3h2ZHJscWV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5OTY4NzAsImV4cCI6MjEwMjU3Mjg3MH0.l7KnSbzKKd-EB9bHUZQQVRUuZowMZhHaM9zUzDWqa5s")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://oioanrtwguzoxvdrlqeu.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pb2FucnR3Z3V6b3h2ZHJscWV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5OTY4NzAsImV4cCI6MjEwMjU3Mjg3MH0.l7KnSbzKKd-EB9bHUZQQVRUuZowMZhHaM9zUzDWqa5s")
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg"}
 PAYMENT_METHODS = {"cashapp", "paypal", "chime", "robux", "trade"}
 
@@ -201,7 +201,6 @@ def create_order():
             response = supabase.table("orders").insert(order_data).execute()
             order = response.data[0]
 
-            # Get waiting count
             waiting_response = supabase.table("orders").select("id").in_(
                 "status", ["waiting", "pending"]
             ).execute()
@@ -277,7 +276,6 @@ def create_trade_order():
             response = supabase.table("orders").insert(order_data).execute()
             order = response.data[0]
 
-            # Get waiting count
             waiting_response = supabase.table("orders").select("id").in_(
                 "status", ["waiting", "pending"]
             ).execute()
@@ -312,13 +310,11 @@ def get_order(code):
 
         order = response.data[0]
 
-        # Get orders ahead in queue
         ahead_response = supabase.table("orders").select("id").in_(
             "status", ["waiting", "pending"]
         ).lt("created_at", order["created_at"]).execute()
         ahead_count = len(ahead_response.data)
 
-        # Get total waiting count
         waiting_response = supabase.table("orders").select("id").in_(
             "status", ["waiting", "pending"]
         ).execute()
@@ -364,7 +360,6 @@ def update_order(order_id):
         return jsonify({"error": "Invalid status"}), 400
 
     try:
-        # Get current order to preserve existing fields
         order_response = supabase.table("orders").select("*").eq("id", order_id).execute()
         if not order_response.data:
             return jsonify({"error": "Order not found"}), 404
@@ -421,7 +416,6 @@ def create_product():
 @require_admin
 def delete_product(product_id):
     try:
-        # Get product to find image
         response = supabase.table("products").select("*").eq("id", product_id).execute()
         if not response.data:
             return jsonify({"error": "Product not found"}), 404
@@ -435,6 +429,14 @@ def delete_product(product_id):
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/debug-env")
+def debug_env():
+    return jsonify({
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", "NOT SET"),
+        "SUPABASE_KEY_prefix": os.environ.get("SUPABASE_KEY", "NOT SET")[:20],
+    })
 
 
 @app.route("/")
