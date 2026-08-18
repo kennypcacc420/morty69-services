@@ -57,7 +57,10 @@ def upload_image_to_supabase(image_file, filename_prefix=""):
         image_bytes,
         {"content-type": image_file.mimetype or "image/jpeg"},
     )
-    return supabase.storage.from_(STORAGE_BUCKET).get_public_url(filename), filename
+    url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(filename)
+    # Remove trailing query parameter if present
+    url = url.rstrip("?")
+    return url, filename
 
 
 def send_discord_notification(order, waiting_count):
@@ -126,11 +129,15 @@ def list_products():
     try:
         response = supabase.table("products").select("*").order("created_at", desc=True).execute()
         
-        # Ensure all image_filename values are full URLs
+        # Ensure all image_filename values are full URLs without trailing ?
         for product in response.data:
-            if product["image_filename"] and not product["image_filename"].startswith("http"):
-                # It's just a filename, construct the full URL
-                product["image_filename"] = f"{SUPABASE_URL}/storage/v1/object/public/{STORAGE_BUCKET}/{product['image_filename']}"
+            if product["image_filename"]:
+                # Remove trailing ? if present
+                url = product["image_filename"].rstrip("?")
+                if not url.startswith("http"):
+                    # It's just a filename, construct the full URL
+                    url = f"{SUPABASE_URL}/storage/v1/object/public/{STORAGE_BUCKET}/{url}"
+                product["image_filename"] = url
         
         return jsonify(response.data)
     except Exception as e:
