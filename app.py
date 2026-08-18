@@ -125,6 +125,13 @@ def uploaded_file(filename):
 def list_products():
     try:
         response = supabase.table("products").select("*").order("created_at", desc=True).execute()
+        
+        # Ensure all image_filename values are full URLs
+        for product in response.data:
+            if product["image_filename"] and not product["image_filename"].startswith("http"):
+                # It's just a filename, construct the full URL
+                product["image_filename"] = f"{SUPABASE_URL}/storage/v1/object/public/{STORAGE_BUCKET}/{product['image_filename']}"
+        
         return jsonify(response.data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
