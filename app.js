@@ -38,9 +38,9 @@ function switchTab(tabName) {
   $$('.nav-btn').forEach((b) => b.classList.remove('active'));
   $(`#tab-${tabName}`).classList.add('active');
   $(`.nav-btn[data-tab="${tabName}"]`).classList.add('active');
+
   if (tabName === 'store') loadProducts();
   if (tabName === 'cart') { renderCart(); loadQueue(); }
-  if (tabName === 'trade') renderTradeTab();
   if (tabName === 'admin' && adminKey) loadAdminData();
 }
 
@@ -53,27 +53,29 @@ async function loadProducts() {
     const products = await api('/api/products');
     const grid = $('#products-grid');
     const empty = $('#products-empty');
+
     if (products.length === 0) {
       grid.innerHTML = '';
       empty.classList.remove('hidden');
       return;
     }
+
     empty.classList.add('hidden');
     grid.innerHTML = products
       .map(
         (p) => `
-        <div class="product-card">
-          <img class="product-image" src="${p.image_filename}" alt="${p.name}">
-          <div class="product-body">
-            <h3>${escapeHtml(p.name)}</h3>
-            ${p.description ? `<p class="muted">${escapeHtml(p.description)}</p>` : ''}
-            <div class="product-prices">
-              <span class="price-rbx">${p.rbx_price} RBX</span>
-              <span class="price-cash">$${formatCash(p.cash_price)}</span>
-            </div>
-            <button class="btn btn-primary btn-sm" onclick="addToCart(${p.id})">Add to Cart</button>
+      <div class="product-card">
+        <img class="product-image" src="${p.image_filename}" alt="${p.name}">
+        <div class="product-body">
+          <h3>${escapeHtml(p.name)}</h3>
+          ${p.description ? `<p class="muted">${escapeHtml(p.description)}</p>` : ''}
+          <div class="product-prices">
+            <span class="price-rbx">${p.rbx_price} RBX</span>
+            <span class="price-cash">$${formatCash(p.cash_price)}</span>
           </div>
-        </div>`
+          <button class="btn btn-primary btn-sm" onclick="addToCart(${p.id})">Add to Cart</button>
+        </div>
+      </div>`
       )
       .join('');
   } catch (err) {
@@ -101,12 +103,14 @@ async function renderCart() {
   const container = $('#cart-items');
   const empty = $('#cart-empty');
   const checkout = $('#checkout-panel');
+
   if (cart.length === 0) {
     container.innerHTML = '';
     empty.classList.remove('hidden');
     checkout.classList.add('hidden');
     return;
   }
+
   empty.classList.add('hidden');
   checkout.classList.remove('hidden');
 
@@ -114,6 +118,7 @@ async function renderCart() {
     const products = await api('/api/products');
     let totalRbx = 0;
     let totalCash = 0;
+
     container.innerHTML = cart
       .map((item) => {
         const product = products.find((p) => p.id === item.product_id);
@@ -136,6 +141,7 @@ async function renderCart() {
         </div>`;
       })
       .join('');
+
     $('#total-rbx').textContent = totalRbx;
     $('#total-cash').textContent = formatCash(totalCash);
   } catch (err) {
@@ -164,31 +170,24 @@ async function loadQueue() {
   try {
     const data = await api('/api/queue');
     $('#waiting-count').textContent = data.waitingCount;
+
     const list = $('#waiting-list');
     if (data.orders.length === 0) {
       list.innerHTML = '<p class="muted">No one waiting right now.</p>';
       return;
     }
+
     list.innerHTML = data.orders
       .map(
         (o, i) => `
-        <div class="waiting-item">
-          <span>#${i + 1} — ${escapeHtml(o.customer_name)}</span>
-          <span>${statusBadge(o.status)}</span>
-        </div>`
+      <div class="queue-item">
+        #${i + 1} — ${escapeHtml(o.customer_name)} ${statusBadge(o.status)}
+      </div>`
       )
       .join('');
   } catch (err) {
     console.error(err);
   }
-}
-
-const paymentMethodSelect = $('#payment-method');
-if (paymentMethodSelect) {
-  paymentMethodSelect.addEventListener('change', () => {
-    const isTrade = paymentMethodSelect.value === 'trade';
-    $('#payment-trade-note').classList.toggle('hidden', !isTrade);
-  });
 }
 
 $('#place-order-btn').addEventListener('click', async () => {
@@ -201,96 +200,27 @@ $('#place-order-btn').addEventListener('click', async () => {
     alert('Your cart is empty');
     return;
   }
-  const paymentMethod = $('#payment-method') ? $('#payment-method').value : 'cashapp';
-  if (paymentMethod === 'trade') {
-    alert("To pay by trade, please use the Trade tab to upload a photo and description.");
-    switchTab('trade');
-    return;
-  }
+
   try {
     const result = await api('/api/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customer_name: name, items: cart, payment_method: paymentMethod }),
+      body: JSON.stringify({ customer_name: name, items: cart }),
     });
+
     cart = [];
     saveCart();
     renderCart();
+
     $('#order-success').classList.remove('hidden');
     $('#success-order-code').textContent = result.order_code;
     $('#success-queue-pos').textContent = `#${result.queue_position} (${result.waiting_count} waiting)`;
+
     loadQueue();
   } catch (err) {
     alert(err.message);
   }
 });
-
-function renderTradeTab() {
-  const locked = $('#trade-locked');
-  const panel = $('#trade-panel');
-  if (!locked || !panel) return;
-  if (cart.length === 0) {
-    locked.classList.remove('hidden');
-    panel.classList.add('hidden');
-  } else {
-    locked.classList.add('hidden');
-    panel.classList.remove('hidden');
-  }
-}
-
-const tradeForm = $('#trade-form');
-if (tradeForm) {
-  tradeForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    if (cart.length === 0) {
-      alert('Add at least 1 item to your cart before submitting a trade offer.');
-      renderTradeTab();
-      return;
-    }
-
-    const name = $('#trade-customer-name').value.trim();
-    const description = $('#trade-description').value.trim();
-    const imageInput = $('#trade-image');
-    const imageFile = imageInput.files[0];
-
-    if (!name) {
-      alert('Please enter your name');
-      return;
-    }
-    if (!imageFile) {
-      alert('Please upload a JPG photo of what you are trading');
-      return;
-    }
-    if (!description) {
-      alert('Please describe what you are offering');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('customer_name', name);
-    formData.append('description', description);
-    formData.append('items', JSON.stringify(cart));
-    formData.append('image', imageFile);
-
-    try {
-      const result = await api('/api/orders/trade', {
-        method: 'POST',
-        body: formData,
-      });
-      cart = [];
-      saveCart();
-      tradeForm.reset();
-      renderTradeTab();
-      $('#trade-success').classList.remove('hidden');
-      $('#trade-success-order-code').textContent = result.order_code;
-      $('#trade-success-queue-pos').textContent = `#${result.queue_position} (${result.waiting_count} waiting)`;
-      loadQueue();
-    } catch (err) {
-      alert(err.message);
-    }
-  });
-}
 
 $('#check-order-btn').addEventListener('click', async () => {
   const code = $('#check-order-code').value.trim().toUpperCase();
@@ -298,29 +228,28 @@ $('#check-order-btn').addEventListener('click', async () => {
     alert('Enter your order code');
     return;
   }
+
   try {
     const order = await api(`/api/orders/${encodeURIComponent(code)}`);
     const result = $('#order-result');
     result.classList.remove('hidden');
+
     const itemsList = order.items
       .map((i) => `<li>${escapeHtml(i.name)} x${i.quantity}</li>`)
       .join('');
+
     result.innerHTML = `
-      <div class="card">
-        <h3>Order ${escapeHtml(order.order_code)}</h3>
-        <dl>
-          <dt>Customer</dt><dd>${escapeHtml(order.customer_name)}</dd>
-          <dt>Status</dt><dd>${statusBadge(order.status)}</dd>
-          <dt>Payment Method</dt><dd>${escapeHtml(order.payment_method || 'cashapp')}</dd>
-          <dt>Est. Time</dt><dd>${order.est_time || 'Not set yet'}</dd>
-          <dt>Queue Position</dt><dd>#${order.queue_position} (${order.waiting_count} waiting)</dd>
-          <dt>Total RBX</dt><dd>${order.total_rbx}</dd>
-          <dt>Total Cash</dt><dd>$${formatCash(order.total_cash)}</dd>
-          <dt>Items</dt><dd><ul>${itemsList}</ul></dd>
-          ${order.payment_method === 'trade' ? `<dt>Trade Offer</dt><dd>${escapeHtml(order.trade_description || '')}</dd>` : ''}
-          <dt>Ordered</dt><dd>${new Date(order.created_at + 'Z').toLocaleString()}</dd>
-        </dl>
-      </div>`;
+      <h3>Order ${escapeHtml(order.order_code)}</h3>
+      <p><strong>Customer</strong><br>${escapeHtml(order.customer_name)}</p>
+      <p><strong>Status</strong><br>${statusBadge(order.status)}</p>
+      <p><strong>Est. Time</strong><br>${order.est_time || 'Not set yet'}</p>
+      <p><strong>Queue Position</strong><br>#${order.queue_position} (${order.waiting_count} waiting)</p>
+      <p><strong>Total RBX</strong><br>${order.total_rbx}</p>
+      <p><strong>Total Cash</strong><br>$${formatCash(order.total_cash)}</p>
+      <p><strong>Items</strong></p>
+      <ul>${itemsList}</ul>
+      <p><strong>Ordered</strong><br>${new Date(order.created_at + 'Z').toLocaleString()}</p>
+    `;
   } catch (err) {
     alert(err.message);
   }
@@ -357,6 +286,7 @@ $('#add-product-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
   const formData = new FormData(form);
+
   try {
     await api('/api/admin/products', {
       method: 'POST',
@@ -385,24 +315,21 @@ async function loadAdminData() {
       ordersEl.innerHTML = orders
         .map(
           (o) => `
-          <div class="admin-order" data-id="${o.id}">
-            <div class="admin-order-header">
-              <strong>${escapeHtml(o.order_code)}</strong>
-              ${statusBadge(o.status)}
-            </div>
-            <div>${escapeHtml(o.customer_name)} — ${o.total_rbx} RBX / $${formatCash(o.total_cash)}</div>
-            <div class="muted">Payment: ${escapeHtml(o.payment_method || 'cashapp')}${o.payment_method === 'trade' ? ' — ' + escapeHtml(o.trade_description || '') : ''}</div>
-            ${o.payment_method === 'trade' && o.trade_image_filename ? `<div><img src="${o.trade_image_filename}" alt="Trade item" style="max-width:120px;border-radius:8px;margin-top:0.5rem;"></div>` : ''}\
-            <div class="admin-order-actions">
-              <select class="status-select" data-id="${o.id}">
-                <option value="waiting" ${o.status === 'waiting' ? 'selected' : ''}>Waiting</option>
-                <option value="pending" ${o.status === 'pending' ? 'selected' : ''}>Pending</option>
-                <option value="completed" ${o.status === 'completed' ? 'selected' : ''}>Completed</option>
-              </select>
-              <input type="text" class="est-time-input" data-id="${o.id}" placeholder="Est. time" value="${escapeHtml(o.est_time || '')}">
-              <button class="btn btn-primary btn-sm update-order-btn" data-id="${o.id}">Update</button>
-            </div>
-          </div>`
+        <div class="admin-order-card">
+          <div>
+            <strong>${escapeHtml(o.order_code)}</strong> ${statusBadge(o.status)}
+            <div class="muted">${escapeHtml(o.customer_name)} — ${o.total_rbx} RBX / $${formatCash(o.total_cash)}</div>
+          </div>
+          <div class="admin-order-controls">
+            <select class="status-select" data-id="${o.id}">
+              <option value="waiting" ${o.status === 'waiting' ? 'selected' : ''}>Waiting</option>
+              <option value="pending" ${o.status === 'pending' ? 'selected' : ''}>Pending</option>
+              <option value="completed" ${o.status === 'completed' ? 'selected' : ''}>Completed</option>
+            </select>
+            <input type="text" class="est-time-input" data-id="${o.id}" placeholder="Est. time" value="${escapeHtml(o.est_time || '')}">
+            <button class="btn btn-primary btn-sm update-order-btn" data-id="${o.id}">Update</button>
+          </div>
+        </div>`
         )
         .join('');
     }
@@ -414,10 +341,10 @@ async function loadAdminData() {
       productsEl.innerHTML = products
         .map(
           (p) => `
-          <div class="admin-product-row">
-            <span>${escapeHtml(p.name)} — ${p.rbx_price} RBX / $${formatCash(p.cash_price)}</span>
-            <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id})">Delete</button>
-          </div>`
+        <div class="admin-product-row">
+          <span>${escapeHtml(p.name)} — ${p.rbx_price} RBX / $${formatCash(p.cash_price)}</span>
+          <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id})">Delete</button>
+        </div>`
         )
         .join('');
     }
@@ -431,6 +358,7 @@ document.addEventListener('click', async (e) => {
     const id = e.target.dataset.id;
     const status = document.querySelector(`.status-select[data-id="${id}"]`).value;
     const est_time = document.querySelector(`.est-time-input[data-id="${id}"]`).value;
+
     try {
       await api(`/api/admin/orders/${id}`, {
         method: 'PATCH',
@@ -468,7 +396,6 @@ if (adminKey) {
 
 updateCartBadge();
 loadProducts();
-
 setInterval(() => {
   const cartTab = $('#tab-cart');
   if (cartTab.classList.contains('active')) loadQueue();
