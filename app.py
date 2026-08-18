@@ -31,6 +31,8 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXV
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg"}
 PAYMENT_METHODS = {"cashapp", "paypal", "chime", "robux", "trade"}
 
+STORAGE_BUCKET = "product-images"
+
 app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -43,6 +45,19 @@ def generate_order_code():
 
 def allowed_file(filename):
     return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
+
+
+def upload_image_to_supabase(image_file, filename_prefix=""):
+    """Uploads a Flask FileStorage image to the Supabase Storage bucket and returns its public URL."""
+    ext = Path(image_file.filename).suffix.lower()
+    filename = f"{filename_prefix}{int(datetime.now().timestamp())}-{uuid.uuid4().hex}{ext}"
+    image_bytes = image_file.read()
+    supabase.storage.from_(STORAGE_BUCKET).upload(
+        filename,
+        image_bytes,
+        {"content-type": image_file.mimetype or "image/jpeg"},
+    )
+    return supabase.storage.from_(STORAGE_BUCKET).get_public_url(filename), filename
 
 
 def send_discord_notification(order, waiting_count):
@@ -255,9 +270,10 @@ def create_trade_order():
         return jsonify(built), 400
     order_items, total_rbx, total_cash = built
 
-    ext = Path(image.filename).suffix.lower()
-    trade_filename = f"trade-{int(datetime.now().timestamp())}-{uuid.uuid4().hex}{ext}"
-    image.save(UPLOADS_DIR / trade_filename)
+    try:
+        trade_image_url, trade_filename = upload_image_to_supabase(image, filename_prefix="trade-")
+    except Exception as e:
+        return jsonify({"error": f"Image upload failed: {str(e)}"}), 500
 
     for _ in range(10):
         order_code = generate_order_code()
@@ -270,7 +286,7 @@ def create_trade_order():
                 "total_cash": total_cash,
                 "status": "waiting",
                 "payment_method": "trade",
-                "trade_image_filename": trade_filename,
+                "trade_image_filename": trade_image_url,
                 "trade_description": description,
             }
             response = supabase.table("orders").insert(order_data).execute()
@@ -394,15 +410,16 @@ def create_product():
     if not allowed_file(image.filename):
         return jsonify({"error": "Only JPG image files are allowed"}), 400
 
-    ext = Path(image.filename).suffix.lower()
-    filename = f"{int(datetime.now().timestamp())}-{uuid.uuid4().hex}{ext}"
-    image.save(UPLOADS_DIR / filename)
+    try:
+        image_url, filename = upload_image_to_supabase(image)
+    except Exception as e:
+        return jsonify({"error": f"Image upload failed: {str(e)}"}), 500
 
     try:
         product_data = {
             "name": name,
             "description": description,
-            "image_filename": filename,
+            "image_filename": image_url,
             "rbx_price": rbx_price,
             "cash_price": cash_price,
         }
