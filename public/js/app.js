@@ -65,7 +65,7 @@ async function loadProducts() {
       .map(
         (p) => `
       <div class="product-card">
-        <img class="product-image" src="/uploads/${p.image_filename}" alt="${p.name}">
+        <img class="product-image" src="${p.image_filename}" alt="${p.name}">
         <div class="product-body">
           <h3>${escapeHtml(p.name)}</h3>
           ${p.description ? `<p class="muted">${escapeHtml(p.description)}</p>` : ''}
@@ -127,7 +127,7 @@ async function renderCart() {
         totalCash += product.cash_price * item.quantity;
         return `
         <div class="cart-item">
-          <img src="/uploads/${product.image_filename}" alt="${product.name}">
+          <img src="${product.image_filename}" alt="${product.name}">
           <div class="cart-item-info">
             <strong>${escapeHtml(product.name)}</strong>
             <div class="muted">${product.rbx_price} RBX / $${formatCash(product.cash_price)} each</div>
@@ -180,9 +180,8 @@ async function loadQueue() {
     list.innerHTML = data.orders
       .map(
         (o, i) => `
-      <div class="waiting-item">
-        <span>#${i + 1} — ${escapeHtml(o.customer_name)}</span>
-        <span>${statusBadge(o.status)}</span>
+      <div class="queue-item">
+        #${i + 1} — ${escapeHtml(o.customer_name)} ${statusBadge(o.status)}
       </div>`
       )
       .join('');
@@ -240,19 +239,17 @@ $('#check-order-btn').addEventListener('click', async () => {
       .join('');
 
     result.innerHTML = `
-      <div class="card">
-        <h3>Order ${escapeHtml(order.order_code)}</h3>
-        <dl>
-          <dt>Customer</dt><dd>${escapeHtml(order.customer_name)}</dd>
-          <dt>Status</dt><dd>${statusBadge(order.status)}</dd>
-          <dt>Est. Time</dt><dd>${order.est_time || 'Not set yet'}</dd>
-          <dt>Queue Position</dt><dd>#${order.queue_position} (${order.waiting_count} waiting)</dd>
-          <dt>Total RBX</dt><dd>${order.total_rbx}</dd>
-          <dt>Total Cash</dt><dd>$${formatCash(order.total_cash)}</dd>
-          <dt>Items</dt><dd><ul>${itemsList}</ul></dd>
-          <dt>Ordered</dt><dd>${new Date(order.created_at + 'Z').toLocaleString()}</dd>
-        </dl>
-      </div>`;
+      <h3>Order ${escapeHtml(order.order_code)}</h3>
+      <p><strong>Customer</strong><br>${escapeHtml(order.customer_name)}</p>
+      <p><strong>Status</strong><br>${statusBadge(order.status)}</p>
+      <p><strong>Est. Time</strong><br>${order.est_time || 'Not set yet'}</p>
+      <p><strong>Queue Position</strong><br>#${order.queue_position} (${order.waiting_count} waiting)</p>
+      <p><strong>Total RBX</strong><br>${order.total_rbx}</p>
+      <p><strong>Total Cash</strong><br>$${formatCash(order.total_cash)}</p>
+      <p><strong>Items</strong></p>
+      <ul>${itemsList}</ul>
+      <p><strong>Ordered</strong><br>${new Date(order.created_at + 'Z').toLocaleString()}</p>
+    `;
   } catch (err) {
     alert(err.message);
   }
@@ -318,13 +315,12 @@ async function loadAdminData() {
       ordersEl.innerHTML = orders
         .map(
           (o) => `
-        <div class="admin-order" data-id="${o.id}">
-          <div class="admin-order-header">
-            <strong>${escapeHtml(o.order_code)}</strong>
-            ${statusBadge(o.status)}
+        <div class="admin-order-card">
+          <div>
+            <strong>${escapeHtml(o.order_code)}</strong> ${statusBadge(o.status)}
+            <div class="muted">${escapeHtml(o.customer_name)} — ${o.total_rbx} RBX / $${formatCash(o.total_cash)}</div>
           </div>
-          <div>${escapeHtml(o.customer_name)} — ${o.total_rbx} RBX / $${formatCash(o.total_cash)}</div>
-          <div class="admin-order-actions">
+          <div class="admin-order-controls">
             <select class="status-select" data-id="${o.id}">
               <option value="waiting" ${o.status === 'waiting' ? 'selected' : ''}>Waiting</option>
               <option value="pending" ${o.status === 'pending' ? 'selected' : ''}>Pending</option>
