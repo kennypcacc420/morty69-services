@@ -16,18 +16,18 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 UPLOADS_DIR = DATA_DIR / "uploads"
 PUBLIC_DIR = BASE_DIR / "public"
+DB_PATH = DATA_DIR / "store.db"
 
 DATA_DIR.mkdir(exist_ok=True)
 UPLOADS_DIR.mkdir(exist_ok=True)
 
-# No hardcoded fallback secrets — the app will fail to start if these
-# aren't set in the environment, instead of silently using a leaked key.
-ADMIN_KEY = os.environ["Morty666"]
-DISCORD_WEBHOOK = os.environ["DISCORD_WEBHOOK"]
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-
-STORAGE_BUCKET = "product-images"
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "Morty666")
+DISCORD_WEBHOOK = os.environ.get(
+    "DISCORD_WEBHOOK",
+    "https://discord.com/api/webhooks/1538332569102319616/-Ltcb2L4u0oEiHPz4e10_WqgkBf0NJFdhrkjXsLdxPperMCH-4WSPgSjkPFsReAkp313",
+)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://oioanrtwguzoxvdrlqeu.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pb2FucnR3Z3V6b3h2ZHJscWV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5OTY4NzAsImV4cCI6MjEwMjU3Mjg3MH0.l7KnSbzKKd-EB9bHUZQQVRUuZowMZhHaM9zUzDWqa5s")
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg"}
 PAYMENT_METHODS = {"cashapp", "paypal", "chime", "robux", "trade"}
 
@@ -43,28 +43,6 @@ def generate_order_code():
 
 def allowed_file(filename):
     return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
-
-
-def upload_image_to_supabase(image_file, filename_prefix=""):
-    """Uploads a Flask FileStorage image to Supabase Storage and returns its public URL."""
-    ext = Path(image_file.filename).suffix.lower()
-    filename = f"{filename_prefix}{int(datetime.now().timestamp())}-{uuid.uuid4().hex}{ext}"
-    image_bytes = image_file.read()
-    supabase.storage.from_(STORAGE_BUCKET).upload(
-        filename,
-        image_bytes,
-        {"content-type": image_file.mimetype or "image/jpeg"},
-    )
-    return supabase.storage.from_(STORAGE_BUCKET).get_public_url(filename), filename
-
-
-def delete_image_from_supabase(image_url_or_filename):
-    """Best-effort delete of an image from Supabase Storage given its stored URL or filename."""
-    try:
-        filename = image_url_or_filename.split("/")[-1]
-        supabase.storage.from_(STORAGE_BUCKET).remove([filename])
-    except Exception as exc:
-        print(f"Storage delete failed: {exc}")
 
 
 def send_discord_notification(order, waiting_count):
@@ -104,10 +82,8 @@ def send_discord_notification(order, waiting_count):
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    # trade_image_filename now holds a full Supabase public URL, not a
-    # relative local path, so use it directly as the embed image URL.
     if order["payment_method"] == "trade" and order["trade_image_filename"]:
-        embed["image"] = {"url": order["trade_image_filename"]}
+        embed["image"] = {"url": f"/uploads/{order['trade_image_filename']}"}
 
     try:
         requests.post(DISCORD_WEBHOOK, json={"embeds": [embed]}, timeout=10)
@@ -125,8 +101,6 @@ def require_admin(f):
     return decorated
 
 
-# Kept as a harmless fallback in case any legacy image_filename values are
-# still bare local filenames rather than full Supabase URLs.
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
     return send_from_directory(UPLOADS_DIR, filename)
@@ -281,10 +255,9 @@ def create_trade_order():
         return jsonify(built), 400
     order_items, total_rbx, total_cash = built
 
-    try:
-        trade_image_url, _ = upload_image_to_supabase(image, filename_prefix="trade-")
-    except Exception as e:
-        return jsonify({"error": f"Image upload failed: {str(e)}"}), 500
+    ext = Path(image.filename).suffix.lower()
+    trade_filename = f"trade-{int(datetime.now().timestamp())}-{uuid.uuid4().hex}{ext}"
+    image.save(UPLOADS_DIR / trade_filename)
 
     for _ in range(10):
         order_code = generate_order_code()
@@ -297,7 +270,7 @@ def create_trade_order():
                 "total_cash": total_cash,
                 "status": "waiting",
                 "payment_method": "trade",
-                "trade_image_filename": trade_image_url,
+                "trade_image_filename": trade_filename,
                 "trade_description": description,
             }
             response = supabase.table("orders").insert(order_data).execute()
@@ -421,16 +394,15 @@ def create_product():
     if not allowed_file(image.filename):
         return jsonify({"error": "Only JPG image files are allowed"}), 400
 
-    try:
-        image_url, _ = upload_image_to_supabase(image)
-    except Exception as e:
-        return jsonify({"error": f"Image upload failed: {str(e)}"}), 500
+    ext = Path(image.filename).suffix.lower()
+    filename = f"{int(datetime.now().timestamp())}-{uuid.uuid4().hex}{ext}"
+    image.save(UPLOADS_DIR / filename)
 
     try:
         product_data = {
             "name": name,
             "description": description,
-            "image_filename": image_url,
+            "image_filename": filename,
             "rbx_price": rbx_price,
             "cash_price": cash_price,
         }
@@ -449,12 +421,22 @@ def delete_product(product_id):
             return jsonify({"error": "Product not found"}), 404
 
         product = response.data[0]
-        delete_image_from_supabase(product["image_filename"])
+        image_path = UPLOADS_DIR / product["image_filename"]
+        if image_path.exists():
+            image_path.unlink()
 
         supabase.table("products").delete().eq("id", product_id).execute()
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/debug-env")
+def debug_env():
+    return jsonify({
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", "NOT SET"),
+        "SUPABASE_KEY_prefix": os.environ.get("SUPABASE_KEY", "NOT SET")[:20],
+    })
 
 
 @app.route("/")
