@@ -63,7 +63,7 @@ async function loadProducts() {
       .map(
         (p) => `
         <div class="product-card">
-          <img class="product-image" src="/uploads/${p.image_filename}" alt="${p.name}">
+          <img class="product-image" src="${p.image_filename}" alt="${p.name}">
           <div class="product-body">
             <h3>${escapeHtml(p.name)}</h3>
             ${p.description ? `<p class="muted">${escapeHtml(p.description)}</p>` : ''}
@@ -122,7 +122,7 @@ async function renderCart() {
         totalCash += product.cash_price * item.quantity;
         return `
         <div class="cart-item">
-          <img src="/uploads/${product.image_filename}" alt="${product.name}">
+          <img src="${product.image_filename}" alt="${product.name}">
           <div class="cart-item-info">
             <strong>${escapeHtml(product.name)}</strong>
             <div class="muted">${product.rbx_price} RBX / $${formatCash(product.cash_price)} each</div>
@@ -392,7 +392,7 @@ async function loadAdminData() {
             </div>
             <div>${escapeHtml(o.customer_name)} — ${o.total_rbx} RBX / $${formatCash(o.total_cash)}</div>
             <div class="muted">Payment: ${escapeHtml(o.payment_method || 'cashapp')}${o.payment_method === 'trade' ? ' — ' + escapeHtml(o.trade_description || '') : ''}</div>
-            ${o.payment_method === 'trade' && o.trade_image_filename ? `<div><img src="/uploads/${o.trade_image_filename}" alt="Trade item" style="max-width:120px;border-radius:8px;margin-top:0.5rem;"></div>` : ''}\
+            ${o.payment_method === 'trade' && o.trade_image_filename ? `<div><img src="${o.trade_image_filename}" alt="Trade item" style="max-width:120px;border-radius:8px;margin-top:0.5rem;"></div>` : ''}\
             <div class="admin-order-actions">
               <select class="status-select" data-id="${o.id}">
                 <option value="waiting" ${o.status === 'waiting' ? 'selected' : ''}>Waiting</option>
