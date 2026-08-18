@@ -22,7 +22,7 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 
 # No hardcoded fallback secrets — the app will fail to start if these
 # aren't set in the environment, instead of silently using a leaked key.
-ADMIN_KEY = os.environ["ADMIN_KEY"]
+ADMIN_KEY = os.environ["Morty666"]
 DISCORD_WEBHOOK = os.environ["DISCORD_WEBHOOK"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
